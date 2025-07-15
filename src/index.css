@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom utilities for better responsive design */
+@layer utilities {
+  .line-clamp-1 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  
+  .line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+}
+
+/* Better responsive behavior for HP laptops and desktop */
+@media (min-width: 1024px) {
+  .lg\:text-base {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+  
+  .lg\:text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+}
+
+/* Ensure sidebar stays visible on desktop */
+@media (min-width: 1024px) {
+  .lg\:translate-x-0 {
+    transform: translateX(0);
+  }
+  
+  .lg\:static {
+    position: static;
+  }
+}
