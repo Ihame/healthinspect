@@ -1,4 +1,4 @@
-import { User, FacilityType } from '../types';
+import { User, FacilityType, UserRole } from '../types';
 
 export interface Permission {
   canViewDashboard: boolean;
@@ -20,12 +20,12 @@ export interface Permission {
 
 export const getUserPermissions = (user: User): Permission => {
   const basePermissions: Permission = {
-    canViewDashboard: true,
-    canViewFacilities: true, // Most users need to see facilities
+    canViewDashboard: false,
+    canViewFacilities: false,
     canAddFacilities: false,
     canEditFacilities: false,
     canDeleteFacilities: false,
-    canViewInspections: true, // Most users need to see inspections
+    canViewInspections: false,
     canConductInspections: false,
     canViewReports: false,
     canViewUsers: false,
@@ -41,6 +41,7 @@ export const getUserPermissions = (user: User): Permission => {
     case 'super_admin':
       return {
         ...basePermissions,
+        canViewDashboard: true,
         canViewFacilities: true,
         canAddFacilities: true,
         canEditFacilities: true,
@@ -56,76 +57,79 @@ export const getUserPermissions = (user: User): Permission => {
         facilityTypes: ['pharmacy', 'hospital', 'clinic'],
         canViewAllDistricts: true,
       };
-
     case 'admin':
       return {
         ...basePermissions,
+        canViewDashboard: true,
         canViewFacilities: true,
         canAddFacilities: true,
         canEditFacilities: true,
-        canDeleteFacilities: false, // Can't delete
+        canDeleteFacilities: false,
         canViewInspections: true,
         canConductInspections: true,
         canViewReports: true,
-        canViewUsers: true,
-        canAddUsers: false, // Can't manage users
+        canViewUsers: true, // can see all users, but not manage
+        canAddUsers: false,
         canEditUsers: false,
         canDeleteUsers: false,
         canSuspendUsers: false,
         facilityTypes: ['pharmacy', 'hospital', 'clinic'],
         canViewAllDistricts: true,
       };
-
     case 'pharmacy_supervisor':
       return {
         ...basePermissions,
+        canViewDashboard: true,
         canViewFacilities: true,
-        canAddFacilities: true,
-        canEditFacilities: true,
+        canAddFacilities: false,
+        canEditFacilities: false,
         canDeleteFacilities: false,
         canViewInspections: true,
-        canConductInspections: true,
+        canConductInspections: true, // only for pharmacy
         canViewReports: true,
-        canViewUsers: true, // Can view but not manage
+        canViewUsers: true, // can see all users, but not manage
         facilityTypes: ['pharmacy'],
         canViewAllDistricts: true,
       };
-
     case 'hospital_supervisor':
       return {
         ...basePermissions,
+        canViewDashboard: true,
         canViewFacilities: true,
-        canAddFacilities: true,
-        canEditFacilities: true,
+        canAddFacilities: false,
+        canEditFacilities: false,
         canDeleteFacilities: false,
         canViewInspections: true,
-        canConductInspections: true,
+        canConductInspections: true, // only for hospital/clinic
         canViewReports: true,
-        canViewUsers: true, // Can view but not manage
+        canViewUsers: true, // can see all users, but not manage
         facilityTypes: ['hospital', 'clinic'],
         canViewAllDistricts: true,
       };
-
     case 'pharmacy_inspector':
       return {
         ...basePermissions,
-        canConductInspections: true,
-        canViewReports: false, // Inspectors don't need reports
+        canViewDashboard: false,
+        canViewFacilities: false,
+        canViewInspections: true,
+        canConductInspections: true, // only for pharmacy
+        canViewReports: true,
         canViewUsers: false,
         facilityTypes: ['pharmacy'],
-        canViewAllDistricts: false, // Only assigned district
+        canViewAllDistricts: false,
       };
-
     case 'hospital_inspector':
       return {
         ...basePermissions,
-        canConductInspections: true,
-        canViewReports: false, // Inspectors don't need reports
+        canViewDashboard: false,
+        canViewFacilities: false,
+        canViewInspections: true,
+        canConductInspections: true, // only for hospital/clinic
+        canViewReports: true,
         canViewUsers: false,
         facilityTypes: ['hospital', 'clinic'],
-        canViewAllDistricts: false, // Only assigned district
+        canViewAllDistricts: false,
       };
-
     default:
       return basePermissions;
   }

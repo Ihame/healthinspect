@@ -49,3 +49,34 @@
     position: static;
   }
 }
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .print\:max-h-full,
+  .print\:overflow-visible,
+  .print\:block,
+  .print\:flex,
+  .print\:grid {
+    display: block !important;
+    visibility: visible !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  .print-area, .print-area * {
+    visibility: visible !important;
+  }
+  .print-area {
+    position: absolute !important;
+    left: 0; top: 0; width: 100vw; min-height: 100vh;
+    background: white !important;
+    box-shadow: none !important;
+    z-index: 9999 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

@@ -60,6 +60,7 @@ export interface Inspection {
   signature?: string;
   notes?: string;
   correctiveActions?: CorrectiveAction[];
+  team?: { fullName: string; position: string }[];
 }
 
 export interface CorrectiveAction {
@@ -73,6 +74,20 @@ export interface CorrectiveAction {
   assignedTo?: string;
   resolvedDate?: Date;
   notes?: string;
+}
+
+export interface InspectionSchedule {
+  id: string;
+  facility_id: string;
+  facility_type: FacilityType;
+  inspection_type: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  assigned_inspectors: string[];
+  status: string;
+  notes?: string;
+  created_by: string;
+  created_at: string;
 }
 
 export interface District {

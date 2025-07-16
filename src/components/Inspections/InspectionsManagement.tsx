@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, Edit, Trash2, Calendar, User, MapPin } from 'lucide-react';
-import { getInspections, getFacilities } from '../../lib/supabase';
-import { Inspection } from '../../types';
+import { Plus, Search, Edit, Trash2, Calendar, MapPin, Eye } from 'lucide-react';
+import { getInspections, getFacilities, createPharmacyInspection, createInspection, supabase, uploadInspectionImage, createHospitalInspection, getHospitalInspectionById, createInspectionSchedule, getInspectionSchedules, getUsers } from '../../lib/supabase';
+import type { User, Facility, FacilityType, InspectionSchedule } from '../../types';
 import { OFFICIAL_PHARMACY_INSPECTION_FORM } from '../../data/officialInspectionForms';
-import { createPharmacyInspection } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { HOSPITAL_INSPECTION_ITEMS, CLINIC_INSPECTION_ITEMS } from '../../data/inspectionForms';
-import { createInspection } from '../../lib/supabase';
-import { supabase } from '../../lib/supabase';
-import { uploadInspectionImage } from '../../lib/supabase';
+import SimpleHospitalClinicInspectionForm from './SimpleHospitalClinicInspectionForm';
 import { getUserPermissions } from '../../utils/permissions';
+import HospitalClinicChecklistForm from './HospitalClinicChecklistForm';
+
 
 const deleteInspection = async (inspectionId: string) => {
   await supabase.from('inspections').delete().eq('id', inspectionId);
@@ -18,7 +16,7 @@ const deleteInspection = async (inspectionId: string) => {
 };
 
 const InspectionsManagement: React.FC = () => {
-  const [inspections, setInspections] = useState<Inspection[]>([]);
+  const [inspections, setInspections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -44,13 +42,23 @@ const InspectionsManagement: React.FC = () => {
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [reportInspection, setReportInspection] = useState<any | null>(null);
-
-  // Add state for advanced filters
   const [selectedInspector, setSelectedInspector] = useState<string>('all');
   const [selectedFacilityType, setSelectedFacilityType] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
-
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    facilityId: '',
+    facilityType: '' as FacilityType | '',
+    inspectionType: '',
+    scheduledDate: '',
+    scheduledTime: '',
+    assignedInspectors: [] as string[],
+    notes: ''
+  });
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduledInspections, setScheduledInspections] = useState<InspectionSchedule[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const permissions = currentUser ? getUserPermissions(currentUser) : null;
 
 
@@ -62,7 +70,14 @@ const InspectionsManagement: React.FC = () => {
     setLoading(true);
     try {
       const data = await getInspections();
-      setInspections(data);
+      // Map DB fields to camelCase for UI
+      const mapped = data.map((insp: any) => ({
+        ...insp,
+        facilityName: insp.facility_name,
+        inspectorName: insp.inspector_name,
+        startDate: insp.start_date ? new Date(insp.start_date) : null,
+      }));
+      setInspections(mapped);
     } catch (err) {
       // handle error
     } finally {
@@ -71,6 +86,7 @@ const InspectionsManagement: React.FC = () => {
   };
 
   const openPharmacyModal = async () => {
+    setSelectedFacilityType('pharmacy');
     setShowPharmacyModal(true);
     setPharmacyLoading(true);
     try {
@@ -101,8 +117,8 @@ const InspectionsManagement: React.FC = () => {
     try {
       await createPharmacyInspection({
         facilityId: selectedPharmacy.id,
-        inspectorId: currentUser.id,
-        inspectorName: currentUser.name,
+        inspectorId: currentUser?.id || '',
+        inspectorName: currentUser?.name || '',
         facilityName: selectedPharmacy.name,
         district: selectedPharmacy.district,
         status: 'submitted',
@@ -165,13 +181,6 @@ const InspectionsManagement: React.FC = () => {
 
   const handleStartFacilityInspection = (facility: any) => {
     setSelectedPharmacy(facility); // reuse selectedPharmacy for all
-    let form;
-    if (selectedFacilityType === 'hospital') {
-      form = HOSPITAL_INSPECTION_ITEMS.map(item => ({ ...item, response: '', comments: '', images: [] }));
-    } else {
-      form = CLINIC_INSPECTION_ITEMS.map(item => ({ ...item, response: '', comments: '', images: [] }));
-    }
-    setInspectionForm(form);
     setShowInspectionForm(true);
     setShowFacilityModal(false);
   };
@@ -183,8 +192,8 @@ const InspectionsManagement: React.FC = () => {
     try {
       await createInspection({
         facilityId: selectedPharmacy.id,
-        inspectorId: currentUser.id,
-        inspectorName: currentUser.name,
+        inspectorId: currentUser?.id || '',
+        inspectorName: currentUser?.name || '',
         facilityName: selectedPharmacy.name,
         district: selectedPharmacy.district,
         status: 'submitted',
@@ -210,7 +219,7 @@ const InspectionsManagement: React.FC = () => {
   // Edit inspection
   const handleEditInspection = (insp: any) => {
     setEditInspection(insp);
-    setEditForm(insp.items.map(item => ({ ...item })));
+    setEditForm(insp.items || []);
   };
   const handleEditFormChange = (idx: number, field: string, value: string) => {
     setEditForm(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
@@ -274,6 +283,90 @@ const InspectionsManagement: React.FC = () => {
   // Validation for inspection form
   const isFormValid = inspectionForm.every(item => item.status && (item.status !== 'non_compliant' || (item.images && item.images.length > 0)));
 
+  // Update handleViewReport to fetch latest data
+  const handleViewReport = async (insp: any) => { // Changed to any to avoid conflict with imported Inspection type
+    // Try to fetch the latest inspection data from the backend
+    let latestData = insp;
+    try {
+      if (insp.facilityType === 'hospital' || insp.facilityType === 'clinic') {
+        // Use getHospitalInspectionById if available
+        const data = await getHospitalInspectionById(insp.id);
+        if (data) latestData = data;
+      } else {
+        // For pharmacy or other, you may have getPharmacyInspectionById or similar
+        // If not, fallback to insp
+      }
+    } catch (err) {
+      // fallback to insp
+    }
+    setReportInspection(latestData);
+  };
+
+  // Load scheduled inspections
+  useEffect(() => {
+    loadScheduledInspections();
+  }, []);
+
+  const loadScheduledInspections = async () => {
+    try {
+      const data = await getInspectionSchedules();
+      setScheduledInspections(data);
+    } catch (err) {
+      setScheduledInspections([]);
+    }
+  };
+
+  const handleScheduleInspection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setScheduling(true);
+    try {
+      await createInspectionSchedule({
+        ...scheduleForm,
+        createdBy: currentUser?.id || ''
+      });
+      setShowScheduleModal(false);
+      setScheduleForm({
+        facilityId: '',
+        facilityType: '',
+        inspectionType: '',
+        scheduledDate: '',
+        scheduledTime: '',
+        assignedInspectors: [],
+        notes: ''
+      });
+      loadScheduledInspections();
+    } catch (err) {
+      alert('Failed to schedule inspection.');
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  // Fetch users for inspector assignment
+  useEffect(() => {
+    loadUsers();
+  }, []);
+  const loadUsers = async () => {
+    try {
+      const data = await getUsers();
+      setUsers(data);
+    } catch (err) {
+      setUsers([]);
+    }
+  };
+
+  // Set facilityType automatically when facility is selected
+  const handleFacilityChange = (facilityId: string) => {
+    setScheduleForm(f => {
+      const facility = facilities.find(fac => fac.id === facilityId);
+      return {
+        ...f,
+        facilityId,
+        facilityType: facility ? facility.type : ''
+      };
+    });
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -302,12 +395,21 @@ const InspectionsManagement: React.FC = () => {
           {!permissions?.canConductInspections && (
             <p className="text-red-600">You do not have permission to conduct new inspections.</p>
           )}
+          {permissions?.canAddFacilities && (
+            <button
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg ml-2"
+              onClick={() => setShowScheduleModal(true)}
+            >
+              Schedule Inspection
+            </button>
+          )}
         </div>
       </div>
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex flex-col lg:flex-row gap-4 items-end">
           <div className="flex-1">
+            <label className="block text-xs font-semibold mb-1">Search</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -319,128 +421,94 @@ const InspectionsManagement: React.FC = () => {
               />
             </div>
           </div>
-          {/* Advanced filters UI above the table */}
-          <div className="flex flex-col md:flex-row gap-4 mb-4">
-            <div>
-              <label className="block text-xs font-semibold mb-1">Inspector</label>
-              <select value={selectedInspector} onChange={e => setSelectedInspector(e.target.value)} className="w-full px-3 py-2 border rounded">
-                <option value="all">All</option>
-                {[...new Set(inspectionsWithFacilityType.map(i => i.inspectorName).filter(Boolean))].map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1">Facility Type</label>
-              <select value={selectedFacilityType} onChange={e => setSelectedFacilityType(e.target.value)} className="w-full px-3 py-2 border rounded">
-                <option value="all">All</option>
-                {[...new Set(inspectionsWithFacilityType.map(i => i.facilityType).filter(Boolean))].map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1">Status</label>
-              <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="w-full px-3 py-2 border rounded">
-                <option value="all">All</option>
-                {[...new Set(inspectionsWithFacilityType.map(i => i.status).filter(Boolean))].map(status => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1">Date From</label>
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-3 py-2 border rounded" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1">Date To</label>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-3 py-2 border rounded" />
-            </div>
-          </div>
-          <div className="lg:w-48">
-            <select
-              value={selectedDistrict}
-              onChange={(e) => setSelectedDistrict(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-            >
-              <option value="all">All Districts</option>
-              {/* TODO: Populate with real districts */}
-              <option value="gasabo">Gasabo</option>
-              <option value="kicukiro">Kicukiro</option>
-              <option value="nyarugenge">Nyarugenge</option>
+          <div>
+            <label className="block text-xs font-semibold mb-1">Inspector</label>
+            <select value={selectedInspector} onChange={e => setSelectedInspector(e.target.value)} className="w-full px-3 py-2 border rounded">
+              <option value="all">All</option>
+              {[...new Set(inspectionsWithFacilityType.map(i => i.inspectorName).filter(Boolean))].map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1">Facility Type</label>
+            <select value={selectedFacilityType} onChange={e => setSelectedFacilityType(e.target.value)} className="w-full px-3 py-2 border rounded">
+              <option value="all">All</option>
+              {[...new Set(inspectionsWithFacilityType.map(i => i.facilityType).filter(Boolean))].map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1">Status</label>
+            <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)} className="w-full px-3 py-2 border rounded">
+              <option value="all">All</option>
+              {[...new Set(inspectionsWithFacilityType.map(i => i.status).filter(Boolean))].map(status => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1">Date From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1">Date To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-3 py-2 border rounded" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1 text-white">Reset</label>
+            <button onClick={() => { setSearchTerm(''); setSelectedInspector('all'); setSelectedFacilityType('all'); setSelectedStatus('all'); setDateFrom(''); setDateTo(''); }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Reset Filters</button>
           </div>
         </div>
       </div>
       {/* Inspections Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Facility</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inspector</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">District</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {filteredInspections.length === 0 ? (
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Facility</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inspector</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">District</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <td colSpan={6} className="text-center py-12 text-gray-400">No inspections found.</td>
               </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
-                <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading...</td></tr>
-              ) : filteredInspections.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-8 text-gray-400">No inspections found.</td></tr>
-              ) : filteredInspections.map((insp) => (
-                <tr key={insp.id} className="hover:bg-gray-50">
+            ) : (
+              filteredInspections.map((insp, idx) => (
+                <tr key={insp.id} className="hover:bg-green-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{insp.facilityName || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{insp.inspectorName || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 capitalize">{insp.district}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <Calendar className="w-5 h-5 text-gray-400 mr-3" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{insp.facilityName}</div>
-                      </div>
-                    </div>
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${insp.status === 'submitted' ? 'bg-blue-100 text-blue-800' : insp.status === 'approved' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{insp.status}</span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <User className="w-4 h-4 text-gray-400 mr-2" />
-                      <span className="text-sm text-gray-900">{insp.inspectorName}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <MapPin className="w-4 h-4 text-gray-400 mr-2" />
-                      <span className="text-sm text-gray-900 capitalize">{insp.district}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">{insp.status}</span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {insp.startDate ? new Date(insp.startDate).toLocaleDateString() : '-'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    {permissions?.canEditFacilities && (
-                      <button className="text-blue-600 hover:text-blue-800" title="Edit" onClick={() => handleEditInspection(insp)}>
-                        <Edit className="w-4 h-4" />
-                      </button>
-                    )}
-                    {permissions?.canViewReports && (
-                      <button className="text-gray-600 hover:text-gray-900" title="View Report" onClick={() => setReportInspection(insp)}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mr-1"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0-3 3V6a3 3 0 1 0 3-3H18a3 3 0 1 0-3 3"></path></svg> Report
-                      </button>
-                    )}
-                    {permissions?.canEditFacilities && (
-                      <button className="text-red-600 hover:text-red-800" title="Delete" onClick={() => setDeleteId(insp.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{insp.startDate ? new Date(insp.startDate).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap flex gap-2 items-center">
+                    {/* View Report */}
+                    <button title="View Report" onClick={() => handleViewReport(insp)} className="text-blue-600 hover:text-blue-800" aria-label="View Report">
+                      <Eye className="w-5 h-5" />
+                    </button>
+                    {/* Edit Inspection */}
+                    <button title="Edit Inspection" onClick={() => handleEditInspection(insp)} className="text-green-600 hover:text-green-800" aria-label="Edit Inspection">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13h3l8-8a2.828 2.828 0 00-4-4l-8 8v3h3z" /></svg>
+                    </button>
+                    {/* Delete Inspection */}
+                    <button title="Delete Inspection" onClick={() => setDeleteId(insp.id)} className="text-red-600 hover:text-red-800" aria-label="Delete Inspection">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
       {/* Inspect Modal */}
       {showPharmacyModal && (
@@ -480,7 +548,7 @@ const InspectionsManagement: React.FC = () => {
           </div>
         </div>
       )}
-      {showInspectionForm && selectedPharmacy && (
+      {showInspectionForm && selectedPharmacy && selectedFacilityType === 'pharmacy' && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -493,7 +561,11 @@ const InspectionsManagement: React.FC = () => {
               {inspectionForm.map((item: any, idx) => (
                 <div key={item.id} className="mb-4 border-b pb-4">
                   <div className="font-semibold mb-1">{item.number}. {item.description}</div>
-                  <div className="text-xs text-gray-500 mb-2">{item.targetedPoints.join(', ')}</div>
+                  {item.targetedPoints ? (
+                    <div className="text-xs text-gray-500 mb-2">{item.targetedPoints.join(', ')}</div>
+                  ) : (
+                    <div className="text-xs text-gray-500 mb-2">{item.category}</div>
+                  )}
                   <div className="flex gap-4 mb-2">
                     <label>
                       <input type="radio" name={`status-${idx}`} value="compliant" checked={item.status === 'compliant'} onChange={() => handleFormChange(idx, 'status', 'compliant')} required /> Compliant
@@ -513,14 +585,53 @@ const InspectionsManagement: React.FC = () => {
                   />
                   <input type="file" accept="image/*" onChange={e => e.target.files && handleImageChange(idx, e.target.files[0])} />
                   {item.images && item.images[0] && <img src={item.images[0]} alt="evidence" className="h-16 mt-2" />}
-                  {item.status === 'non_compliant' && (!item.images || item.images.length === 0) && <div className="text-red-500 text-xs mt-1">Image evidence required for non-compliant items.</div>}
                 </div>
               ))}
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => setShowInspectionForm(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700" disabled={!isFormValid || submitting}>{submitting ? 'Submitting...' : 'Submit Inspection'}</button>
+                <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700" disabled={submitting}>{submitting ? 'Submitting...' : 'Submit Inspection'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {showInspectionForm && selectedPharmacy && (selectedFacilityType === 'hospital' || selectedFacilityType === 'clinic') && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">{selectedFacilityType === 'hospital' ? 'Hospital' : 'Clinic'} Inspection: {selectedPharmacy.name}</h3>
+              <button onClick={() => setShowInspectionForm(false)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <span className="text-gray-500">&times;</span>
+              </button>
+            </div>
+            <HospitalClinicChecklistForm
+              facilityName={selectedPharmacy.name}
+              onSubmit={async (formData) => {
+                setSubmitting(true);
+                try {
+                  await createHospitalInspection({
+                    facilityId: selectedPharmacy.id,
+                    inspectorId: currentUser?.id || '',
+                    inspectorName: currentUser?.name || '',
+                    facilityName: selectedPharmacy.name,
+                    district: formData.district,
+                    location: formData.location,
+                    status: 'submitted',
+                    items: formData.items,
+                    team: formData.team,
+                  });
+                  setSubmitSuccess(true);
+                  setShowInspectionForm(false);
+                  setSelectedPharmacy(null);
+                  loadInspections();
+                } catch (err) {
+                  console.error('Hospital inspection submission error:', err);
+                  alert('Failed to submit inspection. See console for details.');
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+            />
           </div>
         </div>
       )}
@@ -623,52 +734,257 @@ const InspectionsManagement: React.FC = () => {
       )}
       {reportInspection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto print:max-h-full print:overflow-visible">
+          <div className="bg-white rounded-xl shadow-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto print:max-h-full print:overflow-visible print-area">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 print:hidden">
               <h3 className="text-lg font-semibold text-gray-900">Inspection Report: {reportInspection.facilityName}</h3>
               <button onClick={() => setReportInspection(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <span className="text-gray-500">&times;</span>
               </button>
             </div>
-            <div className="p-6">
-              <div className="mb-4">
-                <div className="font-bold text-xl mb-1">{reportInspection.facilityName}</div>
-                <div className="text-gray-600">{reportInspection.district} | {reportInspection.status} | {reportInspection.startDate ? new Date(reportInspection.startDate).toLocaleDateString() : '-'}</div>
-                <div className="text-gray-600">Inspector: {reportInspection.inspectorName}</div>
-              </div>
-              <table className="w-full text-sm mb-6">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-2 text-left">#</th>
-                    <th className="p-2 text-left">Question</th>
-                    <th className="p-2 text-left">Status</th>
-                    <th className="p-2 text-left">Observation</th>
-                    <th className="p-2 text-left">Image</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportInspection.items.map((item: any, idx: number) => (
-                    <tr key={item.id || idx} className="border-b">
-                      <td className="p-2 align-top">{item.number || idx + 1}</td>
-                      <td className="p-2 align-top">{item.question || item.description}</td>
-                      <td className="p-2 align-top">{item.status || item.response}</td>
-                      <td className="p-2 align-top">{item.observation || item.comments}</td>
-                      <td className="p-2 align-top">
-                        {item.images && item.images[0] && (
-                          <img src={item.images[0]} alt="evidence" className="h-16" />
+            {reportInspection.items && reportInspection.items[0] && reportInspection.items[0].targetedPoints ? (
+              <div className="p-6">
+                <div className="mb-4">
+                  <div className="font-bold text-xl mb-1">{reportInspection.facilityName}</div>
+                  <div className="text-gray-600">{reportInspection.district} | {reportInspection.status} | {reportInspection.startDate ? new Date(reportInspection.startDate).toLocaleDateString() : '-'}</div>
+                  <div className="text-gray-600">Inspector: {reportInspection.inspectorName}</div>
+                </div>
+                <h2 className="text-lg font-semibold mb-4 text-green-700">Inspection Items</h2>
+                <div className="space-y-6">
+                  {/* Sort items by numeric value of number, fallback to 0 if missing. Items with numbers come first. */}
+                  {[...reportInspection.items]
+                    .sort((a: any, b: any) => {
+                      const numA = a.number !== undefined ? Number(a.number) : 0;
+                      const numB = b.number !== undefined ? Number(b.number) : 0;
+                      // Items with numbers come before those without
+                      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                      if (!isNaN(numA)) return -1;
+                      if (!isNaN(numB)) return 1;
+                      return 0;
+                    })
+                    .map((item: any) => (
+                      <div key={item.id} className="border rounded-lg p-4 bg-gray-50 shadow-sm">
+                        <div className="flex items-center mb-2">
+                          <span className="font-bold text-lg text-blue-800 mr-3">{item.number}</span>
+                          <span className="font-semibold text-gray-900 text-base">{item.description}</span>
+                          <span className={`ml-4 px-3 py-1 rounded-full text-xs font-bold border ${item.status === 'COMPLIANT' ? 'bg-green-100 text-green-800 border-green-300' : item.status === 'NON_COMPLIANT' ? 'bg-red-100 text-red-800 border-red-300' : 'bg-gray-100 text-gray-800 border-gray-300'}`}>{item.status ? item.status.replace('_', ' ').toUpperCase() : 'NOT ANSWERED'}</span>
+                        </div>
+                        <div className="ml-7 mb-2">
+                          <div className="font-medium text-gray-700 mb-1">Targeted Points:</div>
+                          <ul className="list-disc pl-5 space-y-1">
+                            {item.targetedPoints && item.targetedPoints.map((point: string, i: number) => (
+                              <li key={i} className="text-sm text-gray-700">{point}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        {item.observation && (
+                          <div className="ml-7 mt-2">
+                            <div className="font-medium text-gray-700 mb-1">Observation:</div>
+                            <div className="text-sm text-gray-800 bg-white rounded-lg p-3 border border-gray-200">{item.observation}</div>
+                          </div>
                         )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="print:hidden flex justify-end">
-                <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Print</button>
+                      </div>
+                    ))}
+                </div>
+                {/* Inspection Team (if present) */}
+                {reportInspection.team && reportInspection.team.length > 0 && (
+                  <div className="mt-8 mb-4">
+                    <h4 className="font-semibold mb-2">Inspection Team Members</h4>
+                    <table className="w-full text-xs md:text-sm border">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="border px-2 py-1">Full Name</th>
+                          <th className="border px-2 py-1">Position</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reportInspection.team.map((member: any, idx: number) => (
+                          <tr key={idx}>
+                            <td className="border px-2 py-1">{member.name || member.fullName}</td>
+                            <td className="border px-2 py-1">{member.position}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="print:hidden flex justify-end mt-6">
+                  <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Print</button>
+                </div>
               </div>
-            </div>
+            ) : (
+              // ... existing report rendering for pharmacy/other ...
+              <div className="p-6">
+                <div className="mb-4">
+                  <div className="font-bold text-xl mb-1">{reportInspection.facilityName}</div>
+                  <div className="text-gray-600">{reportInspection.district} | {reportInspection.status} | {reportInspection.startDate ? new Date(reportInspection.startDate).toLocaleDateString() : '-'}</div>
+                  <div className="text-gray-600">Inspector: {reportInspection.inspectorName}</div>
+                </div>
+                <table className="w-full text-sm mb-6">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="p-2 text-left">#</th>
+                      <th className="p-2 text-left">Question</th>
+                      <th className="p-2 text-left">Status</th>
+                      <th className="p-2 text-left">Observation</th>
+                      <th className="p-2 text-left">Image</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(reportInspection.items || []).map((item: any, idx: number) => (
+                      <tr key={item.id || idx} className="border-b">
+                        <td className="p-2 align-top">{item.number || idx + 1}</td>
+                        <td className="p-2 align-top">{item.question || item.description}</td>
+                        <td className="p-2 align-top">{item.status || item.response}</td>
+                        <td className="p-2 align-top">{item.observation || item.comments}</td>
+                        <td className="p-2 align-top">
+                          {item.images && item.images[0] && (
+                            <img src={item.images[0]} alt="evidence" className="h-16" />
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="print:hidden flex justify-end">
+                  <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Print</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
+      {/* Schedule Inspection Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-lg max-w-lg w-full p-6">
+            <h3 className="text-lg font-semibold mb-4">Schedule Inspection</h3>
+            <form onSubmit={handleScheduleInspection} className="space-y-4">
+              {/* Facility selection (dropdown or search) */}
+              <div>
+                <label className="block mb-1 font-medium">Facility</label>
+                <select
+                  value={scheduleForm.facilityId}
+                  onChange={e => handleFacilityChange(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="">Select facility</option>
+                  {facilities.map(f => (
+                    <option key={f.id} value={f.id}>{f.name} ({f.type})</option>
+                  ))}
+                </select>
+              </div>
+              {/* Inspection type */}
+              <div>
+                <label className="block mb-1 font-medium">Inspection Type</label>
+                <select
+                  value={scheduleForm.inspectionType}
+                  onChange={e => setScheduleForm(f => ({ ...f, inspectionType: e.target.value }))}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="">Select type</option>
+                  <option value="routine">Routine</option>
+                  <option value="follow-up">Follow-up</option>
+                  <option value="special">Special</option>
+                </select>
+              </div>
+              {/* Date and time */}
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block mb-1 font-medium">Date</label>
+                  <input
+                    type="date"
+                    value={scheduleForm.scheduledDate}
+                    onChange={e => setScheduleForm(f => ({ ...f, scheduledDate: e.target.value }))}
+                    className="w-full border rounded px-3 py-2"
+                    required
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block mb-1 font-medium">Time</label>
+                  <input
+                    type="time"
+                    value={scheduleForm.scheduledTime}
+                    onChange={e => setScheduleForm(f => ({ ...f, scheduledTime: e.target.value }))}
+                    className="w-full border rounded px-3 py-2"
+                    required
+                  />
+                </div>
+              </div>
+              {/* Assign inspectors (multi-select) */}
+              <div>
+                <label className="block mb-1 font-medium">Assign Inspectors</label>
+                <select
+                  multiple
+                  value={scheduleForm.assignedInspectors}
+                  onChange={e => {
+                    const options = Array.from(e.target.selectedOptions, opt => opt.value);
+                    setScheduleForm(f => ({ ...f, assignedInspectors: options }));
+                  }}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  {users.filter(u => u.role.includes('inspector')).map(u => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role.replace('_', ' ')})</option>
+                  ))}
+                </select>
+              </div>
+              {/* Notes */}
+              <div>
+                <label className="block mb-1 font-medium">Notes</label>
+                <textarea
+                  value={scheduleForm.notes}
+                  onChange={e => setScheduleForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full border rounded px-3 py-2"
+                  rows={2}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setShowScheduleModal(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg" disabled={scheduling}>{scheduling ? 'Scheduling...' : 'Create Schedule'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Scheduled Inspections Table */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold mb-2">Scheduled Inspections</h2>
+        <table className="w-full text-sm border">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="p-2">Facility</th>
+              <th className="p-2">Type</th>
+              <th className="p-2">Date</th>
+              <th className="p-2">Time</th>
+              <th className="p-2">Inspectors</th>
+              <th className="p-2">Status</th>
+              <th className="p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scheduledInspections.map((s: InspectionSchedule) => (
+              <tr key={s.id}>
+                <td className="p-2">{facilities.find(f => f.id === s.facility_id)?.name || '-'}</td>
+                <td className="p-2">{s.inspection_type}</td>
+                <td className="p-2">{s.scheduled_date}</td>
+                <td className="p-2">{s.scheduled_time}</td>
+                <td className="p-2">{Array.isArray(s.assigned_inspectors) ? s.assigned_inspectors.map((id: string) => users.find(u => u.id === id)?.name).join(', ') : ''}</td>
+                <td className="p-2">{s.status}</td>
+                <td className="p-2">
+                  {/* Edit/Delete actions for supervisors/admins */}
+                  {permissions?.canAddFacilities && (
+                    <>
+                      {/* Edit and Delete buttons can be implemented here */}
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

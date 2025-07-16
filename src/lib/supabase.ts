@@ -356,14 +356,23 @@ export const getInspectionById = async (inspectionId: string) => {
     if (inspectionError) throw inspectionError;
 
     // Check if there are pharmacy inspection items for this inspection
-    const { data: pharmacyItems, error: pharmacyError } = await supabase
+    const { data: pharmacyItems } = await supabase
       .from('pharmacy_inspection_items')
       .select('*')
       .eq('inspection_id', inspectionId);
 
-    // If pharmacy items exist, use the pharmacy inspection function
     if (pharmacyItems && pharmacyItems.length > 0) {
       return await getPharmacyInspectionById(inspectionId);
+    }
+
+    // Check if there are hospital inspection items for this inspection
+    const { data: hospitalItems } = await supabase
+      .from('hospital_inspection_items')
+      .select('*')
+      .eq('inspection_id', inspectionId);
+
+    if (hospitalItems && hospitalItems.length > 0) {
+      return await getHospitalInspectionById(inspectionId);
     }
 
     // Otherwise, use the regular inspection function
@@ -411,6 +420,12 @@ export const getInspectionById = async (inspectionId: string) => {
 
 export const createPharmacyInspection = async (inspectionData: any) => {
   try {
+    // Simple scoring logic
+    const items = inspectionData.items || [];
+    const maxPossibleScore = items.length;
+    const totalScore = items.filter((item: any) => item.status === 'compliant' || item.status === 'not_applicable').length;
+    const compliancePercentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
+
     // Insert the main inspection record
     const { data: inspection, error: inspectionError } = await supabase
       .from('inspections')
@@ -423,9 +438,9 @@ export const createPharmacyInspection = async (inspectionData: any) => {
         start_date: new Date().toISOString(),
         completed_date: inspectionData.status === 'submitted' ? new Date().toISOString() : null,
         status: inspectionData.status,
-        total_score: inspectionData.totalScore,
-        max_possible_score: inspectionData.maxPossibleScore,
-        compliance_percentage: inspectionData.compliancePercentage,
+        total_score: totalScore,
+        max_possible_score: maxPossibleScore,
+        compliance_percentage: compliancePercentage,
         signature: inspectionData.signature,
         notes: inspectionData.notes
       })
@@ -435,8 +450,8 @@ export const createPharmacyInspection = async (inspectionData: any) => {
     if (inspectionError) throw inspectionError;
 
     // Insert pharmacy inspection items
-    if (inspectionData.items && inspectionData.items.length > 0) {
-      const pharmacyItemsToInsert = inspectionData.items.map((item: any) => ({
+    if (items.length > 0) {
+      const pharmacyItemsToInsert = items.map((item: any) => ({
         inspection_id: inspection.id,
         number: item.number,
         description: item.description,
@@ -520,6 +535,119 @@ export const getPharmacyInspectionById = async (inspectionId: string) => {
   }
 };
 
+export const createHospitalInspection = async (inspectionData: any) => {
+  try {
+    // Simple scoring logic for hospital/clinic
+    const items = inspectionData.items || [];
+    const maxPossibleScore = items.length;
+    const totalScore = items.filter((item: any) =>
+      item.status === 'compliant' || item.status === 'not_applicable' || item.status === 'yes' || item.status === 'na'
+    ).length;
+    const compliancePercentage = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
+
+    // Insert the main inspection record
+    const { data: inspection, error: inspectionError } = await supabase
+      .from('inspections')
+      .insert({
+        facility_id: inspectionData.facilityId,
+        inspector_id: inspectionData.inspectorId,
+        inspector_name: inspectionData.inspectorName,
+        facility_name: inspectionData.facilityName,
+        district: inspectionData.district,
+        start_date: new Date().toISOString(),
+        completed_date: inspectionData.status === 'submitted' ? new Date().toISOString() : null,
+        status: inspectionData.status,
+        total_score: totalScore,
+        max_possible_score: maxPossibleScore,
+        compliance_percentage: compliancePercentage,
+        signature: inspectionData.signature,
+        notes: inspectionData.notes,
+        team: inspectionData.team ? JSON.stringify(inspectionData.team) : null
+      })
+      .select()
+      .single();
+
+    if (inspectionError) throw inspectionError;
+
+    // Insert hospital inspection items
+    if (items.length > 0) {
+      const hospitalItemsToInsert = items.map((item: any) => ({
+        inspection_id: inspection.id,
+        number: item.number,
+        description: item.description,
+        targeted_points: item.targetedPoints,
+        status: item.status,
+        observation: item.observation || ''
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('hospital_inspection_items')
+        .insert(hospitalItemsToInsert);
+
+      if (itemsError) throw itemsError;
+    }
+
+    return inspection;
+  } catch (error) {
+    console.error('Error creating hospital inspection:', error);
+    throw error;
+  }
+};
+
+export const getHospitalInspectionById = async (inspectionId: string) => {
+  try {
+    // Get the main inspection data
+    const { data: inspection, error: inspectionError } = await supabase
+      .from('inspections')
+      .select('*')
+      .eq('id', inspectionId)
+      .single();
+
+    if (inspectionError) throw inspectionError;
+
+    // Get the hospital inspection items
+    const { data: hospitalItems, error: itemsError } = await supabase
+      .from('hospital_inspection_items')
+      .select('*')
+      .eq('inspection_id', inspectionId)
+      .order('number', { ascending: true });
+
+    if (itemsError) throw itemsError;
+
+    // Transform the data to match our Inspection interface
+    const transformedInspection = {
+      id: inspection.id,
+      facilityId: inspection.facility_id,
+      inspectorId: inspection.inspector_id,
+      inspectorName: inspection.inspector_name,
+      facilityName: inspection.facility_name,
+      district: inspection.district,
+      startDate: new Date(inspection.start_date),
+      completedDate: inspection.completed_date ? new Date(inspection.completed_date) : undefined,
+      status: inspection.status,
+      items: hospitalItems.map(item => ({
+        id: item.id,
+        number: item.number,
+        description: item.description,
+        targetedPoints: item.targeted_points,
+        status: item.status,
+        observation: item.observation
+      })),
+      totalScore: inspection.total_score,
+      maxPossibleScore: inspection.max_possible_score,
+      compliancePercentage: inspection.compliance_percentage,
+      signature: inspection.signature,
+      notes: inspection.notes,
+      team: inspection.team ? (typeof inspection.team === 'string' ? JSON.parse(inspection.team) : inspection.team) : []
+    };
+
+    return transformedInspection;
+  } catch (error) {
+    console.error('Error fetching hospital inspection by ID:', error);
+    throw error;
+  }
+};
+
 export const uploadInspectionImage = async (file: File, inspectionId: string, itemId: string): Promise<string> => {
   const fileExt = file.name.split('.').pop();
   const filePath = `${inspectionId}/${itemId}-${Date.now()}.${fileExt}`;
@@ -527,4 +655,98 @@ export const uploadInspectionImage = async (file: File, inspectionId: string, it
   if (error) throw error;
   const { data } = supabase.storage.from('inspection-evidence').getPublicUrl(filePath);
   return data.publicUrl;
+};
+
+// Inspection Scheduling Logic
+export const createInspectionSchedule = async (scheduleData: any) => {
+  try {
+    const { data, error } = await supabase
+      .from('inspection_schedules')
+      .insert({
+        facility_id: scheduleData.facilityId,
+        facility_type: scheduleData.facilityType,
+        inspection_type: scheduleData.inspectionType,
+        scheduled_date: scheduleData.scheduledDate,
+        scheduled_time: scheduleData.scheduledTime,
+        assigned_inspectors: scheduleData.assignedInspectors, // should be array or JSON
+        status: scheduleData.status || 'scheduled',
+        notes: scheduleData.notes || '',
+        created_by: scheduleData.createdBy,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Error creating inspection schedule:', err);
+    throw err;
+  }
+};
+
+export const getInspectionSchedules = async (filters?: {
+  facilityId?: string;
+  inspectorId?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}) => {
+  try {
+    let query = supabase
+      .from('inspection_schedules')
+      .select('*')
+      .order('scheduled_date', { ascending: false });
+
+    if (filters?.facilityId) {
+      query = query.eq('facility_id', filters.facilityId);
+    }
+    if (filters?.inspectorId) {
+      query = query.contains('assigned_inspectors', [filters.inspectorId]);
+    }
+    if (filters?.status) {
+      query = query.eq('status', filters.status);
+    }
+    if (filters?.dateFrom) {
+      query = query.gte('scheduled_date', filters.dateFrom);
+    }
+    if (filters?.dateTo) {
+      query = query.lte('scheduled_date', filters.dateTo);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Error fetching inspection schedules:', err);
+    return [];
+  }
+};
+
+export const updateInspectionSchedule = async (scheduleId: string, updateData: any) => {
+  try {
+    const { data, error } = await supabase
+      .from('inspection_schedules')
+      .update(updateData)
+      .eq('id', scheduleId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('Error updating inspection schedule:', err);
+    throw err;
+  }
+};
+
+export const deleteInspectionSchedule = async (scheduleId: string) => {
+  try {
+    const { error } = await supabase
+      .from('inspection_schedules')
+      .delete()
+      .eq('id', scheduleId);
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('Error deleting inspection schedule:', err);
+    throw err;
+  }
 };
