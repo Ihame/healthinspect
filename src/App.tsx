@@ -14,6 +14,7 @@ import { Facility } from './types';
 import ComplianceIssues from './components/Reports/ComplianceIssues';
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import InspectionsManagement from './components/Inspections/InspectionsManagement';
+import ScheduledInspections from './components/Inspections/ScheduledInspections';
 
 const AppContent: React.FC = () => {
   const { currentUser, loading } = useAuth();
@@ -112,6 +113,7 @@ const AppContent: React.FC = () => {
             <Route path="/users" element={<UserManagement />} />
             <Route path="/issues" element={<ComplianceIssues />} />
             <Route path="/inspections" element={<InspectionsManagement />} />
+            <Route path="/scheduled-inspections" element={<ScheduledInspections />} />
           </Routes>
         </main>
         <AddFacilityModal

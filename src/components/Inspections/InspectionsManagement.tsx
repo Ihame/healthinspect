@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Plus, Search, Edit, Trash2, Calendar, MapPin, Eye } from 'lucide-react';
 import { getInspections, getFacilities, createPharmacyInspection, createInspection, supabase, uploadInspectionImage, createHospitalInspection, getHospitalInspectionById, createInspectionSchedule, getInspectionSchedules, getUsers } from '../../lib/supabase';
 import type { User, Facility, FacilityType, InspectionSchedule } from '../../types';
@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import SimpleHospitalClinicInspectionForm from './SimpleHospitalClinicInspectionForm';
 import { getUserPermissions } from '../../utils/permissions';
 import HospitalClinicChecklistForm from './HospitalClinicChecklistForm';
+import { useRef } from 'react';
 
 
 const deleteInspection = async (inspectionId: string) => {
@@ -60,6 +61,12 @@ const InspectionsManagement: React.FC = () => {
   const [scheduledInspections, setScheduledInspections] = useState<InspectionSchedule[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const permissions = currentUser ? getUserPermissions(currentUser) : null;
+  // Add state for facility search in the schedule modal
+  const [scheduleFacilitySearch, setScheduleFacilitySearch] = useState('');
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<InspectionSchedule | null>(null);
 
 
   useEffect(() => {
@@ -85,7 +92,12 @@ const InspectionsManagement: React.FC = () => {
     }
   };
 
+  // Open modal for pharmacy (with role check)
   const openPharmacyModal = async () => {
+    if (currentUser?.role === 'hospital_inspector') {
+      alert('You are not allowed to inspect pharmacies.');
+      return;
+    }
     setSelectedFacilityType('pharmacy');
     setShowPharmacyModal(true);
     setPharmacyLoading(true);
@@ -164,8 +176,12 @@ const InspectionsManagement: React.FC = () => {
     return matchesSearch && matchesStatus && matchesFacilityType && matchesInspector && matchesDateFrom && matchesDateTo;
   });
 
-  // Open modal for hospital/clinic
+  // Open modal for hospital/clinic (with role check)
   const openFacilityModal = async (type: 'hospital' | 'clinic') => {
+    if (currentUser?.role === 'pharmacy_inspector') {
+      alert('You are not allowed to inspect hospitals or clinics.');
+      return;
+    }
     setSelectedFacilityType(type);
     setShowFacilityModal(true);
     setFacilityLoading(true);
@@ -367,6 +383,55 @@ const InspectionsManagement: React.FC = () => {
     });
   };
 
+  // Add this useEffect to ensure facilities are loaded for the schedule modal
+  useEffect(() => {
+    if (showScheduleModal) {
+      (async () => {
+        try {
+          const data = await getFacilities();
+          setFacilities(data);
+        } catch (err) {
+          setFacilities([]);
+        }
+      })();
+    }
+  }, [showScheduleModal]);
+
+  // When submitSuccess changes to true, show popup and auto-close
+  useEffect(() => {
+    if (submitSuccess) {
+      setShowSuccessPopup(true);
+      if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
+      popupTimeoutRef.current = setTimeout(() => setShowSuccessPopup(false), 3000);
+      setSubmitSuccess(false); // reset for next submission
+    }
+    return () => {
+      if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
+    };
+  }, [submitSuccess]);
+
+  // Filter scheduled inspections for inspectors: only show those assigned to them
+  const isInspector = currentUser?.role === 'pharmacy_inspector' || currentUser?.role === 'hospital_inspector';
+  const visibleScheduledInspections = isInspector
+    ? scheduledInspections.filter(s => Array.isArray(s.assigned_inspectors) && typeof currentUser?.id === 'string' && s.assigned_inspectors.includes(currentUser.id))
+    : scheduledInspections;
+
+  // Handler to show notes modal
+  const handleShowNotes = (schedule: InspectionSchedule) => {
+    setSelectedSchedule(schedule);
+    setShowNotesModal(true);
+  };
+  // Handler to update status (for inspector)
+  const handleUpdateScheduleStatus = useCallback(async (schedule: InspectionSchedule, newStatus: string) => {
+    await supabase.from('inspection_schedules').update({ status: newStatus }).eq('id', schedule.id);
+    loadScheduledInspections();
+  }, [loadScheduledInspections]);
+  // Handler to delete schedule (for admin/supervisor)
+  const handleDeleteSchedule = useCallback(async (schedule: InspectionSchedule) => {
+    await supabase.from('inspection_schedules').delete().eq('id', schedule.id);
+    loadScheduledInspections();
+  }, [loadScheduledInspections]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -495,14 +560,17 @@ const InspectionsManagement: React.FC = () => {
                     <button title="View Report" onClick={() => handleViewReport(insp)} className="text-blue-600 hover:text-blue-800" aria-label="View Report">
                       <Eye className="w-5 h-5" />
                     </button>
-                    {/* Edit Inspection */}
-                    <button title="Edit Inspection" onClick={() => handleEditInspection(insp)} className="text-green-600 hover:text-green-800" aria-label="Edit Inspection">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13h3l8-8a2.828 2.828 0 00-4-4l-8 8v3h3z" /></svg>
-                    </button>
-                    {/* Delete Inspection */}
-                    <button title="Delete Inspection" onClick={() => setDeleteId(insp.id)} className="text-red-600 hover:text-red-800" aria-label="Delete Inspection">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    {/* Only super_admin can edit/delete */}
+                    {currentUser?.role === 'super_admin' && (
+                      <>
+                        <button title="Edit Inspection" onClick={() => handleEditInspection(insp)} className="text-green-600 hover:text-green-800" aria-label="Edit Inspection">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13h3l8-8a2.828 2.828 0 00-4-4l-8 8v3h3z" /></svg>
+                        </button>
+                        <button title="Delete Inspection" onClick={() => setDeleteId(insp.id)} className="text-red-600 hover:text-red-800" aria-label="Delete Inspection">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))
@@ -606,6 +674,8 @@ const InspectionsManagement: React.FC = () => {
             </div>
             <HospitalClinicChecklistForm
               facilityName={selectedPharmacy.name}
+              inspectorId={currentUser?.id}
+              inspectorName={currentUser?.name}
               onSubmit={async (formData) => {
                 setSubmitting(true);
                 try {
@@ -859,19 +929,34 @@ const InspectionsManagement: React.FC = () => {
           <div className="bg-white rounded-xl shadow-lg max-w-lg w-full p-6">
             <h3 className="text-lg font-semibold mb-4">Schedule Inspection</h3>
             <form onSubmit={handleScheduleInspection} className="space-y-4">
-              {/* Facility selection (dropdown or search) */}
+              {/* Facility selection with search */}
               <div>
                 <label className="block mb-1 font-medium">Facility</label>
+                <input
+                  type="text"
+                  placeholder="Search facilities..."
+                  value={scheduleFacilitySearch}
+                  onChange={e => setScheduleFacilitySearch(e.target.value)}
+                  className="w-full border rounded px-3 py-2 mb-2"
+                />
                 <select
                   value={scheduleForm.facilityId}
                   onChange={e => handleFacilityChange(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full border rounded px-3 py-2 max-h-40 overflow-y-auto"
                   required
                 >
                   <option value="">Select facility</option>
-                  {facilities.map(f => (
-                    <option key={f.id} value={f.id}>{f.name} ({f.type})</option>
-                  ))}
+                  {facilities
+                    .filter(f =>
+                      f.name.toLowerCase().includes(scheduleFacilitySearch.toLowerCase()) ||
+                      (f.district && f.district.toLowerCase().includes(scheduleFacilitySearch.toLowerCase())) ||
+                      (f.type && f.type.toLowerCase().includes(scheduleFacilitySearch.toLowerCase()))
+                    )
+                    .map(f => (
+                      <option key={f.id} value={f.id}>
+                        {f.name} ({f.type}, {f.district})
+                      </option>
+                    ))}
                 </select>
               </div>
               {/* Inspection type */}
@@ -912,23 +997,31 @@ const InspectionsManagement: React.FC = () => {
                   />
                 </div>
               </div>
-              {/* Assign inspectors (multi-select) */}
+              {/* Assign inspectors (custom multi-select with checkboxes) */}
               <div>
                 <label className="block mb-1 font-medium">Assign Inspectors</label>
-                <select
-                  multiple
-                  value={scheduleForm.assignedInspectors}
-                  onChange={e => {
-                    const options = Array.from(e.target.selectedOptions, opt => opt.value);
-                    setScheduleForm(f => ({ ...f, assignedInspectors: options }));
-                  }}
-                  className="w-full border rounded px-3 py-2"
-                  required
-                >
+                <div className="border rounded px-3 py-2 max-h-40 overflow-y-auto bg-white">
                   {users.filter(u => u.role.includes('inspector')).map(u => (
-                    <option key={u.id} value={u.id}>{u.name} ({u.role.replace('_', ' ')})</option>
+                    <label key={u.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={scheduleForm.assignedInspectors.includes(u.id)}
+                        onChange={e => {
+                          setScheduleForm(f => {
+                            const selected = new Set(f.assignedInspectors);
+                            if (e.target.checked) {
+                              selected.add(u.id);
+                            } else {
+                              selected.delete(u.id);
+                            }
+                            return { ...f, assignedInspectors: Array.from(selected) };
+                          });
+                        }}
+                      />
+                      <span>{u.name} ({u.role.replace('_', ' ')})</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
               {/* Notes */}
               <div>
@@ -948,43 +1041,27 @@ const InspectionsManagement: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Scheduled Inspections Table */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-2">Scheduled Inspections</h2>
-        <table className="w-full text-sm border">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-2">Facility</th>
-              <th className="p-2">Type</th>
-              <th className="p-2">Date</th>
-              <th className="p-2">Time</th>
-              <th className="p-2">Inspectors</th>
-              <th className="p-2">Status</th>
-              <th className="p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {scheduledInspections.map((s: InspectionSchedule) => (
-              <tr key={s.id}>
-                <td className="p-2">{facilities.find(f => f.id === s.facility_id)?.name || '-'}</td>
-                <td className="p-2">{s.inspection_type}</td>
-                <td className="p-2">{s.scheduled_date}</td>
-                <td className="p-2">{s.scheduled_time}</td>
-                <td className="p-2">{Array.isArray(s.assigned_inspectors) ? s.assigned_inspectors.map((id: string) => users.find(u => u.id === id)?.name).join(', ') : ''}</td>
-                <td className="p-2">{s.status}</td>
-                <td className="p-2">
-                  {/* Edit/Delete actions for supervisors/admins */}
-                  {permissions?.canAddFacilities && (
-                    <>
-                      {/* Edit and Delete buttons can be implemented here */}
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Notes Modal */}
+      {showNotesModal && selectedSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
+          <div className="bg-white rounded-lg shadow-lg px-8 py-6 text-center max-w-md w-full">
+            <div className="text-lg font-semibold mb-2">Inspection Notes</div>
+            <div className="text-gray-700 mb-4 whitespace-pre-line text-left">{selectedSchedule.notes || 'No notes provided.'}</div>
+            <button className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700" onClick={() => setShowNotesModal(false)}>Close</button>
+          </div>
+        </div>
+      )}
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
+          <div className="bg-white rounded-lg shadow-lg px-8 py-6 text-center">
+            <div className="text-green-600 text-3xl mb-2">✔️</div>
+            <div className="text-lg font-semibold mb-2">Inspection Submitted!</div>
+            <div className="text-gray-600 mb-4">Your inspection has been successfully submitted.</div>
+            <button className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700" onClick={() => setShowSuccessPopup(false)}>OK</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

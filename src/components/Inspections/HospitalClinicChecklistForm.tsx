@@ -187,7 +187,14 @@ const CHECKLIST = [
   },
 ];
 
-const HospitalClinicChecklistForm: React.FC<{ facilityName: string; onSubmit: (data: any) => void }> = ({ facilityName, onSubmit }) => {
+interface HospitalClinicChecklistFormProps {
+  facilityName: string;
+  inspectorId?: string;
+  inspectorName?: string;
+  onSubmit: (data: any) => void;
+}
+
+const HospitalClinicChecklistForm: React.FC<HospitalClinicChecklistFormProps> = ({ facilityName, inspectorId, inspectorName, onSubmit }) => {
   const [district, setDistrict] = useState('');
   const [location, setLocation] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -229,6 +236,8 @@ const HospitalClinicChecklistForm: React.FC<{ facilityName: string; onSubmit: (d
       date,
       items,
       team,
+      inspectorId,
+      inspectorName,
     });
   };
 

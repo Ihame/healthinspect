@@ -21,6 +21,7 @@ import { RWANDA_DISTRICTS } from '../../data/facilities';
 
 const ReportsList: React.FC = () => {
   const { currentUser } = useAuth();
+  const allowedAllRoles = ['super_admin', 'admin', 'pharmacy_supervisor', 'hospital_supervisor'];
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,6 +29,7 @@ const ReportsList: React.FC = () => {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
   const [selectedInspection, setSelectedInspection] = useState<string | null>(null);
+  const [rawInspections, setRawInspections] = useState<any[]>([]);
 
   useEffect(() => {
     const loadInspections = async () => {
@@ -38,17 +40,21 @@ const ReportsList: React.FC = () => {
         // Apply role-based filters
         const filters: any = {};
         
-        // Inspectors only see their own inspections
-        if (currentUser?.role.includes('inspector')) {
-          filters.inspectorId = currentUser.id;
+        // Only allow super_admin, admin, and supervisors to see all reports
+        if (!currentUser || typeof currentUser.role !== 'string' || !allowedAllRoles.includes(currentUser.role)) {
+          // Inspectors only see their own inspections
+          if (currentUser && typeof currentUser.id === 'string') {
+            filters.inspectorId = currentUser.id;
+          }
         }
         
         // Apply district filter if user is restricted to specific district
         if (currentUser?.district && currentUser.role !== 'super_admin') {
           filters.district = currentUser.district;
         }
-        
+        console.log('ReportsList: Loading inspections with filters:', filters);
         const data = await getInspections(filters);
+        setRawInspections(data);
         
         // Map database data to Inspection interface
         const mappedInspections: Inspection[] = data.map(inspection => ({
@@ -258,7 +264,7 @@ const ReportsList: React.FC = () => {
       </div>
 
       {/* Reports Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-visible w-full">
         {/* Mobile Cards View */}
         <div className="block lg:hidden">
           {filteredInspections.map((inspection) => (
@@ -271,22 +277,20 @@ const ReportsList: React.FC = () => {
                 </div>
                 <div className="flex items-center ml-4">
                   {getComplianceIcon(inspection.compliancePercentage)}
-                  <span className={`ml-1 font-medium ${getComplianceColor(inspection.compliancePercentage)}`}>
+                  <span className={`ml-1 font-medium ${getComplianceColor(inspection.compliancePercentage)}`}> 
                     {inspection.compliancePercentage.toFixed(1)}%
                   </span>
                 </div>
               </div>
-              
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(inspection.status)}`}>
+                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(inspection.status)}`}> 
                     {inspection.status}
                   </span>
                   <span className="text-sm text-gray-500">
                     {inspection.startDate.toLocaleDateString()}
                   </span>
                 </div>
-                
                 <div className="flex items-center space-x-2">
                   <button className="text-blue-600 hover:text-blue-800 text-sm">
                     View
@@ -297,78 +301,53 @@ const ReportsList: React.FC = () => {
             </div>
           ))}
         </div>
-        
-        {/* Desktop Table View */}
-        <div className="overflow-x-auto">
-          <table className="w-full hidden lg:table">
+        {/* Desktop Table View - always visible, no scroll */}
+        <div className="w-full overflow-x-visible">
+          <table className="table w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Facility
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Inspector
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Compliance
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Facility</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Inspector</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Compliance</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredInspections.map((inspection) => (
                 <tr key={inspection.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <Building2 className="w-5 h-5 text-gray-400 mr-3" />
                       <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {inspection.facilityName}
-                        </div>
-                        <div className="text-sm text-gray-500 capitalize">
-                          {inspection.district}
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{inspection.facilityName}</div>
+                        <div className="text-sm text-gray-500 capitalize">{inspection.district}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <User className="w-5 h-5 text-gray-400 mr-3" />
-                      <div className="text-sm text-gray-900">
-                        {inspection.inspectorName}
-                      </div>
+                      <div className="text-sm text-gray-900">{inspection.inspectorName}</div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <Calendar className="w-5 h-5 text-gray-400 mr-3" />
-                      <div className="text-sm text-gray-900">
-                        {new Date(inspection.startDate).toLocaleDateString()}
-                      </div>
+                      <div className="text-sm text-gray-900">{new Date(inspection.startDate).toLocaleDateString()}</div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(inspection.status)}`}>
-                      {inspection.status.charAt(0).toUpperCase() + inspection.status.slice(1)}
-                    </span>
+                  <td className="px-3 py-4 whitespace-nowrap">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(inspection.status)}`}>{inspection.status.charAt(0).toUpperCase() + inspection.status.slice(1)}</span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       {getComplianceIcon(inspection.compliancePercentage)}
-                      <span className={`ml-2 font-medium ${getComplianceColor(inspection.compliancePercentage)}`}>
-                        {inspection.compliancePercentage.toFixed(1)}%
-                      </span>
+                      <span className={`ml-2 font-medium ${getComplianceColor(inspection.compliancePercentage)}`}>{inspection.compliancePercentage.toFixed(1)}%</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="px-3 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
                       <button
                         onClick={() => handleViewDetails(inspection.id)}
@@ -395,15 +374,10 @@ const ReportsList: React.FC = () => {
 
       {/* Empty State */}
       {!loading && filteredInspections.length === 0 && (
-        <div className="text-center py-12">
-          <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No reports found</h3>
-          <p className="text-gray-600">
-            {inspections.length === 0 
-              ? 'No inspection reports have been created yet.'
-              : 'Try adjusting your search or filter criteria'
-            }
-          </p>
+        <div className="text-center py-12 text-gray-500 text-lg">
+          {(!currentUser || typeof currentUser.role !== 'string' || !allowedAllRoles.includes(currentUser.role))
+            ? 'You have not submitted any inspection reports yet. Only reports you have submitted will appear here.'
+            : 'No inspection reports found.'}
         </div>
       )}
     </div>

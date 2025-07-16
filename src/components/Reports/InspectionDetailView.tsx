@@ -449,8 +449,9 @@ const InspectionDetailView: React.FC<InspectionDetailViewProps> = ({ inspectionI
         {inspection.team && inspection.team.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Inspection Team Members</h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+            {/* Desktop Table View */}
+            <div>
+              <table className="w-full hidden lg:table">
                 <thead>
                   <tr>
                     <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
@@ -458,10 +459,10 @@ const InspectionDetailView: React.FC<InspectionDetailViewProps> = ({ inspectionI
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {inspection.team.map((member: any, idx: number) => (
+                  {(inspection.team || []).map((member: any, idx: number) => (
                     <tr key={idx}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{member.fullName}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{member.position}</td>
+                      <td className="border px-2 py-1">{member.fullName || member.name || '-'}</td>
+                      <td className="border px-2 py-1">{member.position || '-'}</td>
                     </tr>
                   ))}
                 </tbody>

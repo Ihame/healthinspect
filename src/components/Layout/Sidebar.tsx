@@ -7,7 +7,8 @@ import {
   AlertTriangle,
   Users,
   Settings,
-  LogOut
+  LogOut,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getUserPermissions } from '../../utils/permissions';
@@ -41,6 +42,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isOpen, onClo
       label: 'Inspections', 
       icon: ClipboardList, 
       show: permissions?.canViewInspections || false 
+    },
+    { 
+      id: 'scheduled-inspections',
+      label: 'Scheduled Inspections',
+      icon: Calendar,
+      show: permissions?.canViewInspections || (currentUser?.role === 'pharmacy_inspector' || currentUser?.role === 'hospital_inspector')
     },
     { 
       id: 'reports', 

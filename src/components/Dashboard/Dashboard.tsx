@@ -264,7 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToTab, onStartInspectio
 
   const handleViewFacilities = () => {
     if (onNavigateToTab) {
-      onNavigateToTab('facilities');
+      onNavigateToTab('facility-management');
     }
   };
 
@@ -289,66 +289,75 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToTab, onStartInspectio
   return (
     <div className="p-6 max-w-7xl mx-auto min-h-screen bg-gray-50">
       {loading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-          <span className="ml-2 text-gray-600">Loading dashboard...</span>
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mb-4"></div>
+          <span className="text-lg text-gray-600">Loading dashboard...</span>
         </div>
       )}
       {error && (
-        <div className="text-center text-red-600 mb-4">
+        <div className="text-center text-red-600 mb-4 text-lg font-semibold">
           {error}
         </div>
       )}
       
       {/* Welcome Section */}
-      <div className="mb-12 flex flex-col items-center justify-center text-center">
+      <div className="mb-10 flex flex-col items-center justify-center text-center">
         <h1 className="text-4xl font-extrabold text-gray-900 mb-2">
-          Welcome back, {currentUser?.name}
+          Welcome, {currentUser?.name}
         </h1>
         <p className="text-lg text-gray-600 max-w-2xl">
-          {isInspector 
-            ? "Here's your inspection overview and assigned facilities."
-            : "Here's what's happening with health facility inspections today."
+          {isInspector
+            ? "Your inspection performance and assignments at a glance."
+            : "Monitor, analyze, and act on health facility inspections across Rwanda."
           }
         </p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+      {/* Stats Grid - clickable cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
         {statsToShow.map((stat, index) => {
           const Icon = stat.icon;
           return (
-            <div key={index} className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 flex flex-col items-center justify-center">
-              <div className={`p-4 rounded-full mb-4 ${stat.color}`}>
+            <button
+              key={index}
+              className={`bg-white rounded-2xl shadow-lg border border-gray-200 p-8 flex flex-col items-center justify-center hover:shadow-xl transition cursor-pointer group w-full focus:outline-none focus:ring-2 focus:ring-green-500`}
+              onClick={() => {
+                // Navigate or filter based on stat
+                if (stat.title.includes('Facility')) handleViewFacilities();
+                if (stat.title.includes('Inspection')) handleStartInspection();
+                if (stat.title.includes('Compliance')) handleViewReports();
+                if (stat.title.includes('Non-Compliant')) handleViewIssues();
+              }}
+              aria-label={stat.title}
+            >
+              <div className={`p-4 rounded-full mb-4 ${stat.color} group-hover:scale-110 transition-transform`}>
                 <Icon className="w-8 h-8 text-white" />
               </div>
               <p className="text-3xl font-bold text-gray-900 mb-1">{stat.value}</p>
               <p className="text-base text-gray-600 mb-2">{stat.title}</p>
-              <div className={`text-sm font-medium ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>{stat.change}</div>
-            </div>
+              <div className={`text-sm font-medium flex items-center gap-1 ${stat.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>{stat.trend === 'up' ? <span>▲</span> : <span>▼</span>}{stat.change}</div>
+            </button>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
         {/* Recent Inspections */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-semibold text-gray-900">
               {isInspector ? 'My Recent Inspections' : 'Recent Inspections'}
             </h2>
-            {!isInspector && (
-              <button 
-                onClick={handleViewReports}
-                className="text-green-600 hover:text-green-700 text-base font-medium"
-              >
-                View All
-              </button>
-            )}
+            <button
+              onClick={handleViewReports}
+              className="text-green-600 hover:text-green-700 text-base font-medium"
+            >
+              View All
+            </button>
           </div>
           <div className="space-y-6">
             {recentInspections.length > 0 ? recentInspections.map((inspection) => (
-              <div key={inspection.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-xl">
+              <div key={inspection.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-xl hover:bg-green-50 transition">
                 <div className="flex-1">
                   <h3 className="font-medium text-gray-900 text-lg mb-1">{inspection.facility}</h3>
                   {!isInspector && <p className="text-base text-gray-600">{inspection.inspector}</p>}
@@ -367,8 +376,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToTab, onStartInspectio
             )}
           </div>
         </div>
-
-        {/* Upcoming Inspections - Only for inspectors */}
+        {/* Upcoming Inspections for Inspectors */}
         {isInspector && (
           <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
             <div className="flex items-center justify-between mb-8">
@@ -376,7 +384,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToTab, onStartInspectio
             </div>
             <div className="space-y-6">
               {upcomingInspections.length > 0 ? upcomingInspections.map((inspection) => (
-                <div key={inspection.id} className="flex items-center p-6 bg-gray-50 rounded-xl">
+                <div key={inspection.id} className="flex items-center p-6 bg-gray-50 rounded-xl hover:bg-blue-50 transition">
                   <div className="flex-shrink-0">
                     <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                       <Clock className="w-6 h-6 text-blue-600" />
@@ -399,13 +407,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToTab, onStartInspectio
             </div>
           </div>
         )}
-
-        {/* System Overview - Only for admins/supervisors */}
+        {/* System Overview for Admins/Supervisors */}
         {!isInspector && (
           <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-2xl font-semibold text-gray-900">System Overview</h2>
-              <button 
+              <button
                 onClick={handleViewReports}
                 className="text-green-600 hover:text-green-700 text-base font-medium"
               >
@@ -414,7 +421,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToTab, onStartInspectio
             </div>
             <div className="space-y-6">
               {recentInspections.length > 0 ? recentInspections.map((inspection) => (
-                <div key={inspection.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-xl">
+                <div key={inspection.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-xl hover:bg-green-50 transition">
                   <div className="flex-1">
                     <h3 className="font-medium text-gray-900 text-lg mb-1">{inspection.facility}</h3>
                     <p className="text-xs text-gray-500">{inspection.date}</p>
@@ -435,82 +442,65 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToTab, onStartInspectio
         )}
       </div>
 
-      {/* Quick Actions */}
-      <div className="mt-12 bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
+      {/* Quick Actions - visually improved */}
+      <div className="mt-10 bg-white rounded-2xl shadow-lg border border-gray-200 p-8">
         <h2 className="text-2xl font-semibold text-gray-900 mb-8">
           {isInspector ? 'Inspector Actions' : 'Quick Actions'}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           {permissions?.canConductInspections && (
-            <button 
+            <button
               onClick={handleStartInspection}
-              className="flex items-center p-6 bg-green-50 rounded-xl hover:bg-green-100 transition-colors cursor-pointer"
+              className="flex items-center p-6 bg-green-50 rounded-xl hover:bg-green-100 transition-colors cursor-pointer shadow group"
             >
-              <ClipboardCheck className="w-10 h-10 text-green-600 mr-4" />
+              <ClipboardCheck className="w-10 h-10 text-green-600 mr-4 group-hover:scale-110 transition-transform" />
               <div className="text-left">
                 <p className="font-medium text-gray-900 text-lg">Start New Inspection</p>
                 <p className="text-base text-gray-600">Begin facility inspection</p>
               </div>
             </button>
           )}
-          
-          <button 
+          <button
             onClick={handleViewFacilities}
-            className="flex items-center p-6 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors cursor-pointer"
+            className="flex items-center p-6 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors cursor-pointer shadow group"
           >
-            <Building2 className="w-10 h-10 text-blue-600 mr-4" />
+            <Building2 className="w-10 h-10 text-blue-600 mr-4 group-hover:scale-110 transition-transform" />
             <div className="text-left">
               <p className="font-medium text-gray-900 text-lg">{isInspector ? 'My Facilities' : 'View Facilities'}</p>
               <p className="text-base text-gray-600">{isInspector ? 'View assigned facilities' : 'Manage health facilities'}</p>
             </div>
           </button>
-          
-          <button 
+          <button
             onClick={handleViewReports}
-            className="flex items-center p-6 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors cursor-pointer"
+            className="flex items-center p-6 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors cursor-pointer shadow group"
           >
-            <FileText className="w-10 h-10 text-purple-600 mr-4" />
+            <FileText className="w-10 h-10 text-purple-600 mr-4 group-hover:scale-110 transition-transform" />
             <div className="text-left">
               <p className="font-medium text-gray-900 text-lg">View Reports</p>
               <p className="text-base text-gray-600">Check inspection reports</p>
             </div>
           </button>
-          
           {!isInspector && (
-            <button 
+            <button
               onClick={handleViewIssues}
-              className="flex items-center p-6 bg-yellow-50 rounded-xl hover:bg-yellow-100 transition-colors cursor-pointer"
+              className="flex items-center p-6 bg-yellow-50 rounded-xl hover:bg-yellow-100 transition-colors cursor-pointer shadow group"
             >
-              <AlertTriangle className="w-10 h-10 text-yellow-600 mr-4" />
+              <AlertTriangle className="w-10 h-10 text-yellow-600 mr-4 group-hover:scale-110 transition-transform" />
               <div className="text-left">
                 <p className="font-medium text-gray-900 text-lg">View Issues</p>
                 <p className="text-base text-gray-600">Check compliance issues</p>
               </div>
             </button>
           )}
-          
           {permissions?.canViewUsers && (
-            <button 
+            <button
               onClick={handleViewUsers}
-              className="flex items-center p-6 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors cursor-pointer"
+              className="flex items-center p-6 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors cursor-pointer shadow group"
             >
-              <Users className="w-10 h-10 text-indigo-600 mr-4" />
+              <Users className="w-10 h-10 text-indigo-600 mr-4 group-hover:scale-110 transition-transform" />
               <div className="text-left">
                 <p className="font-medium text-gray-900 text-lg">User Management</p>
                 <p className="text-base text-gray-600">Manage system users</p>
-              </div>
-            </button>
-          )}
-          
-          {isInspector && (
-            <button 
-              onClick={handleViewReports}
-              className="flex items-center p-6 bg-orange-50 rounded-xl hover:bg-orange-100 transition-colors cursor-pointer"
-            >
-              <Eye className="w-10 h-10 text-orange-600 mr-4" />
-              <div className="text-left">
-                <p className="font-medium text-gray-900 text-lg">My Reports</p>
-                <p className="text-base text-gray-600">View my inspection reports</p>
               </div>
             </button>
           )}
