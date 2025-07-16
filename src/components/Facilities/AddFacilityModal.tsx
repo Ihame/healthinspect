@@ -34,16 +34,13 @@ const AddFacilityModal: React.FC<AddFacilityModalProps> = ({ isOpen, onClose, on
     
     if (!formData.name.trim()) newErrors.name = 'Facility name is required';
     if (!formData.district) newErrors.district = 'District is required';
-    if (!formData.address.trim()) newErrors.address = 'Address is required';
-    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
-    if (!formData.registrationNumber.trim()) newErrors.registrationNumber = 'Registration number is required';
     
-    // Phone validation
-    if (formData.phone && !formData.phone.match(/^\+250\d{9}$/)) {
+    // Phone validation (only if provided)
+    if (formData.phone && !formData.phone.match(/^[+]250\d{9}$/)) {
       newErrors.phone = 'Phone must be in format +250XXXXXXXXX';
     }
     
-    // Email validation (optional)
+    // Email validation (only if provided)
     if (formData.email && !formData.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       newErrors.email = 'Invalid email format';
     }
@@ -192,7 +189,7 @@ const AddFacilityModal: React.FC<AddFacilityModalProps> = ({ isOpen, onClose, on
           {/* Address */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Address *
+              Address
             </label>
             <textarea
               value={formData.address}
@@ -210,7 +207,7 @@ const AddFacilityModal: React.FC<AddFacilityModalProps> = ({ isOpen, onClose, on
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number *
+                Phone Number
               </label>
               <input
                 type="tel"
@@ -244,7 +241,7 @@ const AddFacilityModal: React.FC<AddFacilityModalProps> = ({ isOpen, onClose, on
           {/* Registration Number */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Registration Number *
+              Registration Number
             </label>
             <input
               type="text"
