@@ -8,6 +8,8 @@ import SimpleHospitalClinicInspectionForm from './SimpleHospitalClinicInspection
 import { getUserPermissions } from '../../utils/permissions';
 import HospitalClinicChecklistForm from './HospitalClinicChecklistForm';
 import { useRef } from 'react';
+import HospitalClinicInspectionForm from './HospitalClinicInspectionForm';
+import ReportsPDF from '../Reports/ReportsPDF';
 
 
 const deleteInspection = async (inspectionId: string) => {
@@ -67,6 +69,7 @@ const InspectionsManagement: React.FC = () => {
   const popupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<InspectionSchedule | null>(null);
+  const [draftInspections, setDraftInspections] = useState<any[]>([]);
 
 
   useEffect(() => {
@@ -432,6 +435,16 @@ const InspectionsManagement: React.FC = () => {
     loadScheduledInspections();
   }, [loadScheduledInspections]);
 
+  // Fetch draft inspections for the current user
+  useEffect(() => {
+    const fetchDrafts = async () => {
+      if (!currentUser) return;
+      const drafts = await getInspections({ inspectorId: currentUser.id, status: 'draft' });
+      setDraftInspections(drafts);
+    };
+    fetchDrafts();
+  }, [currentUser, showInspectionForm]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -578,6 +591,32 @@ const InspectionsManagement: React.FC = () => {
           </tbody>
         </table>
       </div>
+      {/* My Draft Inspections Section */}
+      {draftInspections.length > 0 && (
+        <div className="max-w-3xl mx-auto my-8 bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+          <h2 className="text-lg font-bold text-yellow-700 mb-2">My Draft Inspections</h2>
+          <ul className="divide-y divide-yellow-100">
+            {draftInspections.map(draft => (
+              <li key={draft.id} className="flex items-center justify-between py-2">
+                <div>
+                  <span className="font-semibold">{draft.facility_name}</span>
+                  <span className="ml-2 text-xs text-gray-500">({draft.district})</span>
+                  <span className="ml-4 text-xs text-gray-400">Started: {new Date(draft.start_date).toLocaleDateString()}</span>
+                </div>
+                <button
+                  className="bg-yellow-400 text-white px-4 py-1 rounded hover:bg-yellow-500"
+                  onClick={() => {
+                    // TODO: Load draft data into the form for editing
+                    alert('Draft loading not yet implemented.');
+                  }}
+                >
+                  Continue Editing
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {/* Inspect Modal */}
       {showPharmacyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -672,34 +711,17 @@ const InspectionsManagement: React.FC = () => {
                 <span className="text-gray-500">&times;</span>
               </button>
             </div>
-            <HospitalClinicChecklistForm
+            {/* Pass all required props to HospitalClinicInspectionForm */}
+            <HospitalClinicInspectionForm
+              facilityId={selectedPharmacy.id}
               facilityName={selectedPharmacy.name}
-              inspectorId={currentUser?.id}
-              inspectorName={currentUser?.name}
-              onSubmit={async (formData) => {
-                setSubmitting(true);
-                try {
-                  await createHospitalInspection({
-                    facilityId: selectedPharmacy.id,
-                    inspectorId: currentUser?.id || '',
-                    inspectorName: currentUser?.name || '',
-                    facilityName: selectedPharmacy.name,
-                    district: formData.district,
-                    location: formData.location,
-                    status: 'submitted',
-                    items: formData.items,
-                    team: formData.team,
-                  });
-                  setSubmitSuccess(true);
-                  setShowInspectionForm(false);
-                  setSelectedPharmacy(null);
-                  loadInspections();
-                } catch (err) {
-                  console.error('Hospital inspection submission error:', err);
-                  alert('Failed to submit inspection. See console for details.');
-                } finally {
-                  setSubmitting(false);
-                }
+              district={selectedPharmacy.district}
+              inspectorId={currentUser?.id || ''}
+              inspectorName={currentUser?.name || ''}
+              onSuccess={() => {
+                setShowInspectionForm(false);
+                setSelectedPharmacy(null);
+                loadInspections();
               }}
             />
           </div>
@@ -804,37 +826,61 @@ const InspectionsManagement: React.FC = () => {
       )}
       {reportInspection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto print:max-h-full print:overflow-visible print-area">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 print:hidden">
-              <h3 className="text-lg font-semibold text-gray-900">Inspection Report: {reportInspection.facilityName}</h3>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto print:max-h-full print:overflow-visible print-area border-4 border-green-600">
+            <div className="flex items-center justify-between p-6 border-b-2 border-green-600 print:hidden">
+              <h3 className="text-2xl font-extrabold text-green-800 tracking-wide flex items-center gap-2">
+                <span className="inline-block w-8 h-8 bg-green-600 rounded-full text-white flex items-center justify-center font-bold">HI</span>
+                Inspection Report: {reportInspection.facilityName}
+              </h3>
               <button onClick={() => setReportInspection(null)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                 <span className="text-gray-500">&times;</span>
               </button>
             </div>
-            {reportInspection.items && reportInspection.items[0] && reportInspection.items[0].targetedPoints ? (
-              <div className="p-6">
-                <div className="mb-4">
-                  <div className="font-bold text-xl mb-1">{reportInspection.facilityName}</div>
-                  <div className="text-gray-600">{reportInspection.district} | {reportInspection.status} | {reportInspection.startDate ? new Date(reportInspection.startDate).toLocaleDateString() : '-'}</div>
-                  <div className="text-gray-600">Inspector: {reportInspection.inspectorName}</div>
+            <div className="print:hidden flex justify-end gap-3 px-6 pt-4">
+              <ReportsPDF inspection={reportInspection} />
+              <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Print</button>
+            </div>
+            {/* Debug logging */}
+            {(() => {
+              console.log('Report Inspection Data:', reportInspection);
+              console.log('Report Items:', reportInspection.items);
+              console.log('First Item:', reportInspection.items?.[0]);
+              return null;
+            })()}
+            {/* Show loading state if items are not loaded yet */}
+            {!reportInspection.items ? (
+              <div className="p-8 text-center">
+                <div className="text-gray-500 text-lg">Loading inspection data...</div>
+              </div>
+            ) : reportInspection.items && reportInspection.items[0] && reportInspection.items[0].targetedPoints ? (
+              <div className="p-8 bg-gradient-to-br from-green-50 to-white rounded-b-2xl">
+                <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                  <div>
+                    <div className="font-extrabold text-2xl text-green-900 mb-1">{reportInspection.facilityName}</div>
+                    <div className="text-gray-700 font-medium">{reportInspection.district} | {reportInspection.status} | {reportInspection.startDate ? new Date(reportInspection.startDate).toLocaleDateString() : '-'}</div>
+                    <div className="text-gray-700 font-medium">Inspector: {reportInspection.inspectorName}</div>
+                  </div>
+                  <div className="bg-green-100 border border-green-300 rounded-lg px-4 py-2 text-green-800 font-bold text-lg shadow-sm mt-2 md:mt-0">
+                    {reportInspection.compliancePercentage !== undefined && (
+                      <span>Compliance: {reportInspection.compliancePercentage.toFixed(1)}%</span>
+                    )}
+                  </div>
                 </div>
-                <h2 className="text-lg font-semibold mb-4 text-green-700">Inspection Items</h2>
+                <h2 className="text-xl font-bold mb-4 text-green-700 border-b-2 border-green-200 pb-2">Inspection Items</h2>
                 <div className="space-y-6">
-                  {/* Sort items by numeric value of number, fallback to 0 if missing. Items with numbers come first. */}
                   {[...reportInspection.items]
                     .sort((a: any, b: any) => {
                       const numA = a.number !== undefined ? Number(a.number) : 0;
                       const numB = b.number !== undefined ? Number(b.number) : 0;
-                      // Items with numbers come before those without
                       if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
                       if (!isNaN(numA)) return -1;
                       if (!isNaN(numB)) return 1;
                       return 0;
                     })
                     .map((item: any) => (
-                      <div key={item.id} className="border rounded-lg p-4 bg-gray-50 shadow-sm">
-                        <div className="flex items-center mb-2">
-                          <span className="font-bold text-lg text-blue-800 mr-3">{item.number}</span>
+                      <div key={item.id} className="border-l-4 border-green-600 bg-white rounded-lg p-4 shadow-md">
+                        <div className="flex items-center mb-2 gap-2">
+                          <span className="font-bold text-lg text-blue-800 mr-2">{item.number}</span>
                           <span className="font-semibold text-gray-900 text-base">{item.description}</span>
                           <span className={`ml-4 px-3 py-1 rounded-full text-xs font-bold border ${item.status === 'COMPLIANT' ? 'bg-green-100 text-green-800 border-green-300' : item.status === 'NON_COMPLIANT' ? 'bg-red-100 text-red-800 border-red-300' : 'bg-gray-100 text-gray-800 border-gray-300'}`}>{item.status ? item.status.replace('_', ' ').toUpperCase() : 'NOT ANSWERED'}</span>
                         </div>
@@ -849,18 +895,22 @@ const InspectionsManagement: React.FC = () => {
                         {item.observation && (
                           <div className="ml-7 mt-2">
                             <div className="font-medium text-gray-700 mb-1">Observation:</div>
-                            <div className="text-sm text-gray-800 bg-white rounded-lg p-3 border border-gray-200">{item.observation}</div>
+                            <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-3 border border-gray-200">{item.observation}</div>
+                          </div>
+                        )}
+                        {item.images && item.images[0] && (
+                          <div className="ml-7 mt-2">
+                            <img src={item.images[0]} alt="evidence" className="h-24 rounded shadow border" />
                           </div>
                         )}
                       </div>
                     ))}
                 </div>
-                {/* Inspection Team (if present) */}
                 {reportInspection.team && reportInspection.team.length > 0 && (
                   <div className="mt-8 mb-4">
-                    <h4 className="font-semibold mb-2">Inspection Team Members</h4>
-                    <table className="w-full text-xs md:text-sm border">
-                      <thead className="bg-gray-100">
+                    <h4 className="font-semibold mb-2 text-green-800">Inspection Team Members</h4>
+                    <table className="w-full text-xs md:text-sm border rounded-lg overflow-hidden">
+                      <thead className="bg-green-100">
                         <tr>
                           <th className="border px-2 py-1">Full Name</th>
                           <th className="border px-2 py-1">Position</th>
@@ -877,21 +927,24 @@ const InspectionsManagement: React.FC = () => {
                     </table>
                   </div>
                 )}
-                <div className="print:hidden flex justify-end mt-6">
-                  <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Print</button>
-                </div>
               </div>
             ) : (
-              // ... existing report rendering for pharmacy/other ...
-              <div className="p-6">
-                <div className="mb-4">
-                  <div className="font-bold text-xl mb-1">{reportInspection.facilityName}</div>
-                  <div className="text-gray-600">{reportInspection.district} | {reportInspection.status} | {reportInspection.startDate ? new Date(reportInspection.startDate).toLocaleDateString() : '-'}</div>
-                  <div className="text-gray-600">Inspector: {reportInspection.inspectorName}</div>
+              <div className="p-8 bg-gradient-to-br from-blue-50 to-white rounded-b-2xl">
+                <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                  <div>
+                    <div className="font-extrabold text-2xl text-blue-900 mb-1">{reportInspection.facilityName}</div>
+                    <div className="text-gray-700 font-medium">{reportInspection.district} | {reportInspection.status} | {reportInspection.startDate ? new Date(reportInspection.startDate).toLocaleDateString() : '-'}</div>
+                    <div className="text-gray-700 font-medium">Inspector: {reportInspection.inspectorName}</div>
+                  </div>
+                  <div className="bg-blue-100 border border-blue-300 rounded-lg px-4 py-2 text-blue-800 font-bold text-lg shadow-sm mt-2 md:mt-0">
+                    {reportInspection.compliancePercentage !== undefined && (
+                      <span>Compliance: {reportInspection.compliancePercentage.toFixed(1)}%</span>
+                    )}
+                  </div>
                 </div>
-                <table className="w-full text-sm mb-6">
+                <table className="w-full text-sm mb-6 rounded-lg overflow-hidden shadow">
                   <thead>
-                    <tr className="bg-gray-100">
+                    <tr className="bg-blue-100">
                       <th className="p-2 text-left">#</th>
                       <th className="p-2 text-left">Question</th>
                       <th className="p-2 text-left">Status</th>
@@ -902,22 +955,21 @@ const InspectionsManagement: React.FC = () => {
                   <tbody>
                     {(reportInspection.items || []).map((item: any, idx: number) => (
                       <tr key={item.id || idx} className="border-b">
-                        <td className="p-2 align-top">{item.number || idx + 1}</td>
+                        <td className="p-2 align-top font-bold text-blue-800">{item.number || idx + 1}</td>
                         <td className="p-2 align-top">{item.question || item.description}</td>
-                        <td className="p-2 align-top">{item.status || item.response}</td>
+                        <td className="p-2 align-top">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold border ${item.status === 'compliant' ? 'bg-green-100 text-green-800 border-green-300' : item.status === 'non_compliant' ? 'bg-red-100 text-red-800 border-red-300' : 'bg-gray-100 text-gray-800 border-gray-300'}`}>{item.status ? item.status.replace('_', ' ').toUpperCase() : item.response ? item.response.toUpperCase() : 'NOT ANSWERED'}</span>
+                        </td>
                         <td className="p-2 align-top">{item.observation || item.comments}</td>
                         <td className="p-2 align-top">
                           {item.images && item.images[0] && (
-                            <img src={item.images[0]} alt="evidence" className="h-16" />
+                            <img src={item.images[0]} alt="evidence" className="h-16 rounded shadow border" />
                           )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <div className="print:hidden flex justify-end">
-                  <button onClick={() => window.print()} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Print</button>
-                </div>
               </div>
             )}
           </div>

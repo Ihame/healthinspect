@@ -10,10 +10,19 @@ console.log('🔑 Using API Key:', supabaseAnonKey ? 'Present' : 'Missing');
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Missing Supabase environment variables');
-  throw new Error('Missing Supabase environment variables. Please check your .env file.');
+  console.error('📝 Please create a .env file in the project root with:');
+  console.error('   VITE_SUPABASE_URL=https://your-project-id.supabase.co');
+  console.error('   VITE_SUPABASE_ANON_KEY=your_anon_key_here');
+  console.error('🔗 Get these values from: https://supabase.com/dashboard > Your Project > Settings > API');
+  
+  // Don't throw error immediately, provide user-friendly message
+  alert('Missing Supabase configuration!\n\nPlease:\n1. Create a .env file in the project root\n2. Add your Supabase URL and API key\n3. Get these from: https://supabase.com/dashboard');
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient<Database>(
+  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseAnonKey || 'placeholder-key', 
+  {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
@@ -42,7 +51,8 @@ export const getFacilities = async (filters?: {
   try {
     let query = supabase
       .from('facilities')
-      .select('*')
+      .select('id, name, type, district, address, phone, registration_number, is_active')
+      .limit(100)
       .order('name', { ascending: true });
 
     if (filters?.district && filters.district !== 'all') {
@@ -85,7 +95,8 @@ export const getInspections = async (filters?: {
   try {
     let query = supabase
       .from('inspections')
-      .select('*')
+      .select('id, facility_id, facility_name, district, inspector_id, inspector_name, start_date, status, compliance_percentage, created_at')
+      .limit(50)
       .order('created_at', { ascending: false });
 
     if (filters?.inspectorId) {
@@ -328,7 +339,8 @@ export const getUsers = async () => {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('id, name, email, role, district, is_active')
+      .limit(100)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -586,6 +598,28 @@ export const createHospitalInspection = async (inspectionData: any) => {
 
       if (itemsError) throw itemsError;
     }
+
+    // Insert extra details into hospital_inspection_details
+    const { error: detailsError } = await supabase
+      .from('hospital_inspection_details')
+      .insert({
+        inspection_id: inspection.id,
+        responsible_person: inspectionData.responsiblePerson || '',
+        practitioners: inspectionData.practitioners ? JSON.stringify(inspectionData.practitioners) : null,
+        services: inspectionData.services ? JSON.stringify(inspectionData.services) : null,
+        all_services_listed: inspectionData.allServicesListed ?? null,
+        patient_journey: inspectionData.patientJourney ? JSON.stringify(inspectionData.patientJourney) : null,
+        voucher: inspectionData.voucher ? JSON.stringify(inspectionData.voucher) : null,
+        lab_imaging: inspectionData.labImaging ? JSON.stringify(inspectionData.labImaging) : null,
+        procedures: inspectionData.procedures ? JSON.stringify(inspectionData.procedures) : null,
+        hospitalization: inspectionData.hospitalization ? JSON.stringify(inspectionData.hospitalization) : null,
+        consumables: inspectionData.consumables ? JSON.stringify(inspectionData.consumables) : null,
+        data_protection: inspectionData.dataProtection ? JSON.stringify(inspectionData.dataProtection) : null,
+        feedback: inspectionData.feedback ? JSON.stringify(inspectionData.feedback) : null,
+        findings: inspectionData.findings ? JSON.stringify(inspectionData.findings) : null,
+        signatures: inspectionData.signatures ? JSON.stringify(inspectionData.signatures) : null
+      });
+    if (detailsError) throw detailsError;
 
     return inspection;
   } catch (error) {

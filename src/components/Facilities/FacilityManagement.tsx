@@ -32,6 +32,20 @@ const FacilityManagement: React.FC<FacilityManagementProps> = ({ onStartInspecti
   const [selectedDistrict, setSelectedDistrict] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
+  const filteredFacilities = facilities.filter(facility => {
+    const matchesSearch = facility.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         facility.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = selectedType === 'all' || facility.type === selectedType;
+    const matchesDistrict = selectedDistrict === 'all' || facility.district.toLowerCase() === selectedDistrict;
+    
+    return matchesSearch && matchesType && matchesDistrict;
+  });
+  const paginatedFacilities = filteredFacilities.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = Math.ceil(filteredFacilities.length / pageSize);
 
   // Form state
   const [facilityForm, setFacilityForm] = useState({
@@ -188,15 +202,6 @@ const FacilityManagement: React.FC<FacilityManagementProps> = ({ onStartInspecti
     });
   };
 
-  const filteredFacilities = facilities.filter(facility => {
-    const matchesSearch = facility.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         facility.address.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = selectedType === 'all' || facility.type === selectedType;
-    const matchesDistrict = selectedDistrict === 'all' || facility.district.toLowerCase() === selectedDistrict;
-    
-    return matchesSearch && matchesType && matchesDistrict;
-  });
-
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'hospital': return 'bg-blue-100 text-blue-800';
@@ -331,98 +336,75 @@ const FacilityManagement: React.FC<FacilityManagementProps> = ({ onStartInspecti
         </div>
       </div>
 
-      {/* Facilities Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Facility
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  District
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contact
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Registration
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredFacilities.map((facility) => (
-                <tr key={facility.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <Building2 className="w-5 h-5 text-gray-400 mr-3" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{facility.name}</div>
-                        <div className="text-sm text-gray-500">{facility.address}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getTypeColor(facility.type)}`}>
-                      {facility.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <MapPin className="w-4 h-4 text-gray-400 mr-2" />
-                      <span className="text-sm text-gray-900 capitalize">{facility.district}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{facility.phone}</div>
-                    {facility.email && (
-                      <div className="text-sm text-gray-500">{facility.email}</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {facility.registrationNumber}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    {permissions?.canConductInspections && onStartInspection && (
-                      <button
-                        onClick={() => onStartInspection(facility)}
-                        className="text-green-600 hover:text-green-800"
-                        title="Start Inspection"
-                      >
-                        <span className="inline-flex items-center">
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 17v-2a4 4 0 0 1 4-4h4"/><path d="M17 13l4 4-4 4"/></svg>
-                          Inspect
-                        </span>
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => openEditModal(facility)}
-                      className="text-blue-600 hover:text-blue-800"
-                      title="Edit Facility"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteFacility(facility.id)}
-                      className="text-red-600 hover:text-red-800"
-                      title="Delete Facility"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* Facilities Card Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {paginatedFacilities.map((facility) => (
+          <div key={facility.id} className="bg-white rounded-xl shadow border border-gray-100 flex flex-col p-4 relative">
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 className="w-6 h-6 text-gray-400" />
+              <span className="font-semibold text-lg truncate" title={facility.name}>{facility.name}</span>
+            </div>
+            <div className="text-sm text-gray-500 mb-1">{facility.address}</div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${getTypeColor(facility.type)}`}>{facility.type}</span>
+              <span className="flex items-center gap-1 text-xs text-gray-700 bg-gray-100 rounded-full px-2 py-0.5">
+                <MapPin className="w-4 h-4 text-gray-400" /> {facility.district}
+              </span>
+            </div>
+            <div className="mb-2">
+              <div className="text-sm text-gray-900 flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" />{facility.phone}</div>
+              {facility.email && <div className="text-xs text-gray-500 ml-6">{facility.email}</div>}
+            </div>
+            <div className="mb-2 text-xs text-gray-700">Reg #: {facility.registrationNumber}</div>
+            <div className="flex flex-wrap gap-2 mt-auto">
+              {permissions?.canConductInspections && onStartInspection && (
+                <button
+                  onClick={() => onStartInspection(facility)}
+                  className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
+                  title="Start Inspection"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 17v-2a4 4 0 0 1 4-4h4"/><path d="M17 13l4 4-4 4"/></svg>
+                  Inspect
+                </button>
+              )}
+              <button 
+                onClick={() => openEditModal(facility)}
+                className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200"
+                title="Edit Facility"
+              >
+                <Edit className="w-4 h-4" /> Edit
+              </button>
+              <button 
+                onClick={() => handleDeleteFacility(facility.id)}
+                className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                title="Delete Facility"
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-2 mt-6">
+          <button
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <span className="text-sm text-gray-700">Page {currentPage} of {totalPages}</span>
+          <button
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* Add/Edit Facility Modal */}
       {(showAddModal || editingFacility) && (

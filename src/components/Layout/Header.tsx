@@ -5,10 +5,24 @@ import { useAuth } from '../../context/AuthContext';
 interface HeaderProps {
   onMenuToggle: () => void;
   title: string;
+  onChangePassword: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onMenuToggle, title }) => {
+const Header: React.FC<HeaderProps> = ({ onMenuToggle, title, onChangePassword }) => {
   const { currentUser } = useAuth();
+  const [showMenu, setShowMenu] = React.useState(false);
+  const avatarRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  React.useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    }
+    if (showMenu) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showMenu]);
 
   return (
     <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
@@ -49,16 +63,32 @@ const Header: React.FC<HeaderProps> = ({ onMenuToggle, title }) => {
         </button>
 
         {/* User avatar */}
-        <div className="flex items-center">
-          <div className="w-7 h-7 lg:w-8 lg:h-8 bg-green-500 rounded-full flex items-center justify-center">
+        <div className="relative flex items-center" ref={avatarRef}>
+          <button
+            className="w-7 h-7 lg:w-8 lg:h-8 bg-green-500 rounded-full flex items-center justify-center focus:outline-none"
+            onClick={() => setShowMenu(m => !m)}
+            aria-label="User menu"
+          >
             <span className="text-xs lg:text-sm font-medium text-white">
               {currentUser?.name.split(' ').map(n => n[0]).join('')}
             </span>
-          </div>
+          </button>
           <div className="ml-2 lg:ml-3 hidden lg:block">
             <p className="text-sm font-medium text-gray-900 truncate">{currentUser?.name}</p>
             <p className="text-xs text-gray-600 capitalize truncate">{currentUser?.role?.replace('_', ' ')}</p>
           </div>
+          {/* Dropdown menu */}
+          {showMenu && (
+            <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+              <button
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-lg"
+                onClick={() => { setShowMenu(false); onChangePassword(); }}
+              >
+                Change Password
+              </button>
+              {/* You can add more menu items here */}
+            </div>
+          )}
         </div>
       </div>
     </header>

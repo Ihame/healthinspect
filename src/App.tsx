@@ -15,6 +15,7 @@ import ComplianceIssues from './components/Reports/ComplianceIssues';
 import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import InspectionsManagement from './components/Inspections/InspectionsManagement';
 import ScheduledInspections from './components/Inspections/ScheduledInspections';
+import ChangePasswordModal from './components/Auth/ChangePasswordModal';
 
 const AppContent: React.FC = () => {
   const { currentUser, loading } = useAuth();
@@ -22,6 +23,7 @@ const AppContent: React.FC = () => {
   const [selectedFacility, setSelectedFacility] = React.useState<Facility | null>(null);
   const [showAddFacilityModal, setShowAddFacilityModal] = React.useState(false);
   const [facilitiesRefreshKey, setFacilitiesRefreshKey] = React.useState(0);
+  const [showChangePassword, setShowChangePassword] = React.useState(false);
   const permissions = currentUser ? getUserPermissions(currentUser) : null;
   const navigate = useNavigate();
 
@@ -103,6 +105,7 @@ const AppContent: React.FC = () => {
         <Header
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
           title={getPageTitle()}
+          onChangePassword={() => setShowChangePassword(true)}
         />
         <main className="flex-1 overflow-auto bg-gray-50">
           <Routes>
@@ -120,6 +123,10 @@ const AppContent: React.FC = () => {
           isOpen={showAddFacilityModal}
           onClose={() => setShowAddFacilityModal(false)}
           onSubmit={handleAddFacilitySubmit}
+        />
+        <ChangePasswordModal
+          isOpen={showChangePassword}
+          onClose={() => setShowChangePassword(false)}
         />
       </div>
     </div>
